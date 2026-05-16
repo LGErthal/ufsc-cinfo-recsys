@@ -9,6 +9,7 @@ import streamlit as st
 import pandas as pd
 
 from pdf_parser.historico_pdf_parser import extrair_disciplinas
+from db_conn.supabase_conn import *
 
 st.set_page_config(
     page_title="Sistema de Recomendação de Grade Curricular",
@@ -20,9 +21,15 @@ st.image("data/capa_cinfo.png")
 
 st.title("Sistema de Recomendação de Grade Curricular")
 
+st.subheader("Faça o upload do Controle Curricular")
 pdf_curriculo = st.file_uploader(
-    "Faça o upload do Controle Curricular",
+    "Anexe o PDF",
     type=["pdf"]
+)
+
+st.subheader("Curriculo")
+ano_curriculo = st.radio("Selecione o ano do seu curriculo",
+["2016", "2026"],
 )
 
 if pdf_curriculo:
@@ -62,8 +69,30 @@ if pdf_curriculo:
         "nome_disciplina": "Nome"
     })
 
+    # união dos códigos APROVADAS + CURSANDO
+    codigos_excluir = set(
+        df_aprovadas["Código"].tolist() +
+        df_cursando["Código"].tolist()
+    )
+    response = get_curriculo(ano_curriculo=ano_curriculo)
+
+    # PARA CURSAR
+    df_cursar = [
+        {
+            "Código": d["codigo_disciplina"],
+            "Nome": d["nome_disciplina"],
+            "Fase": d["fase"],
+            "tipo": d["tipo"],
+            "carga_horaria": d["carga_horaria"],
+        }
+        for d in response
+        if (
+            d["codigo_disciplina"] not in codigos_excluir
+        )
+    ]
+
     # COLUNAS DAS DISCIPLINAS
-    disc_col1, disc_col2 = st.columns(2)
+    disc_col1, disc_col2, disc_col3 = st.columns(3)
 
     with disc_col1:
         st.subheader("APROVADAS")
@@ -79,6 +108,18 @@ if pdf_curriculo:
 
         st.dataframe(
             df_cursando,
+            hide_index=True,
+            width="stretch"
+        )
+
+    with disc_col3:
+        st.subheader("PARA CURSAR")
+        df_para_cursar = pd.DataFrame(
+            df_cursar
+        ).sort_values("Fase")
+
+        st.dataframe(
+            df_para_cursar[df_para_cursar["Fase"] != 0], #IGNORAMOS AS OPTATIVAS NESTE PRIMEIRO MOMENTO
             hide_index=True,
             width="stretch"
         )
@@ -153,13 +194,10 @@ if pdf_curriculo:
         tipo_opt = st.radio("Preferência por...",
         ["Tecnologia da Informação", "Gestão da Informação", "Indiferente"],
         )
-
     
     st.divider()
     st.header("Gere sua recomendação de grade curricular")
     botao = st.button("Gerar!", type="primary")
 
     if botao:
-        with st.spinner("Aguarde", show_time=True):
-            time.sleep(1)
-            st.text('yup')
+
