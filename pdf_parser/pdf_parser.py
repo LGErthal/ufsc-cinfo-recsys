@@ -1,236 +1,505 @@
 import pdfplumber
 import re
 from datetime import datetime, timedelta
-import os
-from typing import List, Dict, Optional
+from dataclasses import dataclass, field
+from typing import List, Optional
 
-# Variáveis
-PDF_PATH = "./files/cadastro_turmas_cinfo.pdf"
-OUTPUT_SQL = "grade_cinfo.sql"
+# =========================================================
+# CONFIG
+# =========================================================
+
+PDF_PATH = "./data/cadastro_turma_arq_20261.pdf"
+OUTPUT_SQL = "grade_arq.sql"
+
+SEMESTRE = "20261"
+
 BLOCO_MINUTOS = 50
 
+# =========================================================
+# INTERVALOS
+# =========================================================
 
-def calcular_fim_com_intervalo(inicio: datetime, duracao_blocos: int) -> datetime:
-    """
-    Função para calcular o horário de término de uma disciplina com base no intervalo entre as aulas.
-    
-    A função considera a duração dos blocos de aula (em minutos) e ajusta o horário final 
-    caso a aula atravesse um intervalo fixo.
+INTERVALOS = [
+    ("10:00", "10:10"),
+    ("20:10", "20:20"),
+]
 
-    Parâmetros:
-    inicio (datetime): O horário de início da aula.
-    duracao_blocos (int): A quantidade de blocos de aula, cada um com duração de 50 minutos.
+# =========================================================
+# DATACLASSES
+# =========================================================
 
-    Retorna:
-    datetime: O horário de término da aula considerando os intervalos fixos.
-    """
+
+@dataclass
+class Agenda:
+    dia: int
+    hora_inicio: str
+    hora_fim: str
+
+
+@dataclass
+class Secao:
+    semestre: str
+
+    codigo_disciplina: str
+    turma: str
+    nome_disciplina: str
+
+    agendas: List[Agenda] = field(default_factory=list)
+
+
+# =========================================================
+# HELPERS
+# =========================================================
+
+
+def escape_sql(value: str) -> str:
+
+    if value is None:
+        return ""
+
+    return value.replace("'", "''")
+
+
+def calcular_fim_com_intervalo(
+    inicio: datetime,
+    duracao_blocos: int
+) -> datetime:
+
     minutos_total = duracao_blocos * BLOCO_MINUTOS
+
     fim = inicio + timedelta(minutes=minutos_total)
 
-    intervalos = [
-        ("10:00", "10:10"),
-        ("20:10", "20:20"),
-    ]
+    for inicio_int, fim_int in INTERVALOS:
 
-    for inicio_int, fim_int in intervalos:
         ini_int = inicio.replace(
             hour=int(inicio_int.split(":")[0]),
             minute=int(inicio_int.split(":")[1])
         )
-        fim_int = inicio.replace(
+
+        fim_intervalo = inicio.replace(
             hour=int(fim_int.split(":")[0]),
             minute=int(fim_int.split(":")[1])
         )
 
-        # Se a aula atravessa o início do intervalo, adiciona o intervalo ao horário final
         if inicio < ini_int and fim > ini_int:
-            fim += timedelta(minutes=10)
+            fim += (fim_intervalo - ini_int)
 
     return fim
 
 
-def parse_horario(horario: str) -> Optional[Dict[str, int]]:
-    """
-    Função para parsear os horários no formato especificado.
+def parse_horario(horario_str: str) -> Optional[Agenda]:
 
-    Parâmetros:
-    horario (str): O horário no formato 'd.HHMM-dd' onde 'd' é o dia da semana, 'HHMM' é a hora de início 
-                   e 'dd' é a duração da aula em blocos.
+    match = re.match(r"(\d)\.(\d{4})-(\d)", horario_str)
 
-    Retorna:
-    dict: Dicionário contendo o dia da semana, hora de início e hora de término (se o formato for válido).
-    """
-    match = re.match(r"(\d)\.(\d{4})-(\d)", horario)
     if not match:
         return None
 
-    dia_semana = int(match.group(1))
+    dia = int(match.group(1))
     hora = match.group(2)
     duracao = int(match.group(3))
 
     inicio = datetime.strptime(hora, "%H%M")
+
     fim = calcular_fim_com_intervalo(inicio, duracao)
 
-    return {
-        "dia_semana": dia_semana,
-        "hora_inicio": inicio.strftime("%H:%M:%S"),
-        "hora_fim": fim.strftime("%H:%M:%S"),
-    }
+    return Agenda(
+        dia=dia,
+        hora_inicio=inicio.strftime("%H:%M:%S"),
+        hora_fim=fim.strftime("%H:%M:%S")
+    )
 
 
-def extrair_horarios(texto: str) -> List[Dict[str, int]]:
-    """
-    Função para extrair todos os horários de uma string.
+def extrair_horarios(texto: str) -> List[Agenda]:
 
-    Parâmetros:
-    texto (str): O texto contendo os horários no formato esperado.
-
-    Retorna:
-    List[dict]: Lista de dicionários contendo o dia da semana, hora de início e hora de término.
-    """
     horarios = re.findall(r"\d\.\d{4}-\d", texto)
-    return [parse_horario(h) for h in horarios if parse_horario(h)]
+
+    resultado = []
+
+    for horario in horarios:
+
+        parsed = parse_horario(horario)
+
+        if parsed:
+            resultado.append(parsed)
+
+    return resultado
 
 
-def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Dict[str, str]]:
-    """
-    Função principal para extrair as disciplinas do PDF.
+# =========================================================
+# PDF PARSER
+# =========================================================
 
-    Parâmetros:
-    pdf_path (str): O caminho para o arquivo PDF a ser processado.
 
-    Retorna:
-    List[dict]: Lista de dicionários contendo informações sobre as disciplinas (código, turma, nome e horários).
-    """
-    disciplinas = []
-    
+def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
+
+    secoes = []
+
     with pdfplumber.open(pdf_path) as pdf:
-        texto = ""
-        for page in pdf.pages:
-            texto += page.extract_text() + "\n"
 
-    linhas = texto.split("\n")
+        texto_completo = ""
+
+        for page in pdf.pages:
+
+            texto = page.extract_text()
+
+            if texto:
+                texto_completo += texto + "\n"
+
+    linhas = texto_completo.split("\n")
+
+    linhas_processadas = []
+
+    # =====================================================
+    # JUNTA LINHAS QUEBRADAS
+    # =====================================================
 
     i = 0
-    while i < len(linhas):
-        linha = linhas[i]
 
-        # Detecta o início de uma linha de disciplina
+    while i < len(linhas):
+
+        linha = linhas[i].strip()
+
+        if not linha:
+            i += 1
+            continue
+
+        # Detecta início disciplina
         if re.match(r"^[A-Z]{3}\d{4}", linha):
+
             linha_completa = linha
 
-            # Junta as linhas seguintes caso a turma tenha dois horários
             j = i + 1
-            while j < len(linhas) and not re.match(r"^[A-Z]{3}\d{4}", linhas[j]):
-                linha_completa += " " + linhas[j]
+
+            while j < len(linhas):
+
+                prox = linhas[j].strip()
+
+                # Nova disciplina
+                if re.match(r"^[A-Z]{3}\d{4}", prox):
+                    break
+
+                # Cabeçalhos
+                if prox.startswith("CADASTRO"):
+                    break
+
+                if prox.startswith("SeTIC"):
+                    break
+
+                linha_completa += " " + prox
+
                 j += 1
 
-            try:
-                partes = linha_completa.split()
-
-                codigo = partes[0]
-                turma = partes[1]
-
-                # Extrai o nome da disciplina
-                nome = []
-                k = 2
-                while k < len(partes) and not partes[k].isdigit():
-                    nome.append(partes[k])
-                    k += 1
-
-                nome = " ".join(nome)
-
-                # Extrai os horários da disciplina
-                horarios = extrair_horarios(linha_completa)
-
-                disciplinas.append({
-                    "codigo": codigo,
-                    "turma": turma,
-                    "nome": nome,
-                    "horarios": horarios
-                })
-
-            except Exception as e:
-                print(f"Erro ao processar linha: {linha_completa}")
+            linhas_processadas.append(linha_completa)
 
             i = j
+
         else:
             i += 1
 
-    return disciplinas
+    # =====================================================
+    # PARSE DISCIPLINAS
+    # =====================================================
+
+    for linha in linhas_processadas:
+
+        try:
+
+            partes = linha.split()
+
+            codigo_disciplina = partes[0]
+            turma = partes[1]
+
+            # =================================================
+            # ENCONTRA CARGA HORÁRIA
+            # =================================================
+
+            workload_index = None
+
+            for idx, parte in enumerate(partes):
+
+                if parte.isdigit():
+
+                    possible = int(parte)
+
+                    if possible in [18, 36, 72, 74, 108, 126, 432]:
+                        workload_index = idx
+                        break
+
+            if workload_index is None:
+                print(f"ERRO workload: {linha}")
+                continue
+
+            # =================================================
+            # NOME DISCIPLINA
+            # =================================================
+
+            nome_disciplina = " ".join(
+                partes[2:workload_index]
+            )
+
+            # =================================================
+            # HORÁRIOS
+            # =================================================
+
+            agendas = extrair_horarios(linha)
+
+            secao = Secao(
+                semestre=SEMESTRE,
+
+                codigo_disciplina=codigo_disciplina,
+                turma=turma,
+                nome_disciplina=nome_disciplina,
+
+                agendas=agendas
+            )
+
+            secoes.append(secao)
+
+        except Exception as e:
+
+            print("\nERRO AO PROCESSAR:")
+            print(linha)
+            print(e)
+
+    return secoes
 
 
-def gerar_sql(disciplinas: List[Dict[str, str]], output_sql: str) -> None:
-    """
-    Função para gerar o SQL de criação e inserção das disciplinas e horários.
+# =========================================================
+# SQL GENERATOR
+# =========================================================
 
-    Parâmetros:
-    disciplinas (List[dict]): Lista de dicionários contendo as informações das disciplinas.
-    output_sql (str): O caminho para o arquivo onde o SQL gerado será salvo.
 
-    Retorna:
-    None: A função salva o SQL gerado no arquivo especificado.
-    """
+def gerar_sql(
+    secoes: List[Secao],
+    output_sql: str
+):
+
     sql = []
 
-    # Criação das tabelas no banco de dados
+    # =====================================================
+    # TABELAS
+    # =====================================================
+
     sql.append("""
-        CREATE TABLE disciplinas (
-            id SERIAL PRIMARY KEY,
-            codigo VARCHAR(10),
-            nome TEXT
-        );
-        
-        CREATE TABLE turmas (
-            id SERIAL PRIMARY KEY,
-            course_id INTEGER REFERENCES disciplinas(id),
-            turma VARCHAR(10)
-        );
-        
-        CREATE TABLE grade (
-            id SERIAL PRIMARY KEY,
-            section_id INTEGER REFERENCES turmas(id),
-            dia_semana INTEGER,
-            hora_inicio TIME,
-            hora_fim TIME
-        );
-    """)
+CREATE TABLE IF NOT EXISTS semestres (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    semestre VARCHAR(10) UNIQUE NOT NULL
+);
 
-    mapa_disciplinas = {}
-    disciplina_id = 1
-    turma_id = 1
+CREATE TABLE IF NOT EXISTS secoes (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
-    for d in disciplinas:
-        # Inserir a disciplina se ela não estiver no mapa
-        if d["codigo"] not in mapa_disciplinas:
-            sql.append(
-                f"INSERT INTO disciplinas (id, codigo, nome) VALUES ({disciplina_id}, '{d['codigo']}', '{d['nome']}');"
-            )
-            mapa_disciplinas[d["codigo"]] = disciplina_id
-            disciplina_id += 1
+    created_at TIMESTAMP DEFAULT NOW(),
 
-        did = mapa_disciplinas[d["codigo"]]
+    semestre_id INTEGER NOT NULL
+        REFERENCES semestres(id),
 
-        # Inserir a turma
-        sql.append(
-            f"INSERT INTO turmas (id, course_id, turma) VALUES ({turma_id}, {did}, '{d['turma']}');"
+    curriculo_disciplina INTEGER NOT NULL
+        REFERENCES curriculo(id),
+
+    turma VARCHAR(20) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS secoes_agenda (
+    id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    secao_id INTEGER NOT NULL
+        REFERENCES secoes(id),
+
+    dia INTEGER NOT NULL,
+
+    hora_inicio TIME NOT NULL,
+    hora_fim TIME NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS unique_secao
+ON secoes (
+    semestre_id,
+    curriculo_disciplina,
+    turma
+);
+
+CREATE INDEX IF NOT EXISTS idx_curriculo_codigo
+ON curriculo(codigo_disciplina);
+
+CREATE INDEX IF NOT EXISTS idx_secoes_semestre
+ON secoes(semestre_id);
+
+CREATE INDEX IF NOT EXISTS idx_secoes_agenda_secao
+ON secoes_agenda(secao_id);
+
+CREATE INDEX IF NOT EXISTS idx_secoes_agenda_dia
+ON secoes_agenda(dia);
+
+ALTER TABLE semestres DISABLE ROW LEVEL SECURITY;
+ALTER TABLE secoes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE secoes_agenda DISABLE ROW LEVEL SECURITY;
+""")
+
+    # =====================================================
+    # SEMESTRE
+    # =====================================================
+
+    sql.append(f"""
+INSERT INTO semestres (semestre)
+VALUES ('{SEMESTRE}')
+ON CONFLICT (semestre) DO NOTHING;
+""")
+
+    # =====================================================
+    # INSERTS
+    # =====================================================
+
+    sql.append(f"""
+DO $$
+DECLARE
+    v_semestre_id INTEGER;
+    v_secao_id INTEGER;
+    v_curriculo_disciplina INTEGER;
+BEGIN
+
+SELECT id
+INTO v_semestre_id
+FROM semestres
+WHERE semestre = '{SEMESTRE}';
+""")
+
+    for secao in secoes:
+
+        codigo_disciplina = escape_sql(
+            secao.codigo_disciplina
         )
 
-        # Inserir os horários
-        for h in d["horarios"]:
-            sql.append(
-                f"""INSERT INTO grade (section_id, dia_semana, hora_inicio, hora_fim)
-                        VALUES ({turma_id}, {h['dia_semana']}, '{h['hora_inicio']}', '{h['hora_fim']}');"""
-            )
+        turma = escape_sql(secao.turma)
 
-        turma_id += 1
+        nome_disciplina = escape_sql(
+            secao.nome_disciplina
+        )
 
-    with open(output_sql, "w") as f:
+        sql.append(f"""
+
+-- =====================================================
+-- BUSCA DISCIPLINA
+-- =====================================================
+
+SELECT id
+INTO v_curriculo_disciplina
+FROM curriculo
+WHERE codigo_disciplina = '{codigo_disciplina}'
+LIMIT 1;
+
+-- =====================================================
+-- CRIA DISCIPLINA SE NÃO EXISTIR
+-- =====================================================
+
+IF v_curriculo_disciplina IS NULL THEN
+
+    INSERT INTO curriculo (
+        ano_curriculo,
+        fase,
+        nome_disciplina,
+        carga_horaria,
+        codigo_disciplina,
+        tipo,
+        area
+    )
+    VALUES (
+        2026,
+        0,
+        '{nome_disciplina}',
+        0,
+        '{codigo_disciplina}',
+        'Op',
+        0
+    )
+    RETURNING id INTO v_curriculo_disciplina;
+
+END IF;
+
+-- =====================================================
+-- INSERE SEÇÃO
+-- =====================================================
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM secoes s
+    WHERE s.semestre_id = v_semestre_id
+    AND s.curriculo_disciplina = v_curriculo_disciplina
+    AND s.turma = '{turma}'
+) THEN
+
+    INSERT INTO secoes (
+        semestre_id,
+        curriculo_disciplina,
+        turma
+    )
+    VALUES (
+        v_semestre_id,
+        v_curriculo_disciplina,
+        '{turma}'
+    )
+    RETURNING id INTO v_secao_id;
+""")
+
+        for agenda in secao.agendas:
+
+            sql.append(f"""
+    INSERT INTO secoes_agenda (
+        secao_id,
+        dia,
+        hora_inicio,
+        hora_fim
+    )
+    VALUES (
+        v_secao_id,
+        {agenda.dia},
+        '{agenda.hora_inicio}',
+        '{agenda.hora_fim}'
+    );
+""")
+
+        sql.append("""
+END IF;
+""")
+
+    sql.append("""
+END $$;
+""")
+
+    # =====================================================
+    # WRITE FILE
+    # =====================================================
+
+    with open(output_sql, "w", encoding="utf-8") as f:
         f.write("\n".join(sql))
 
-    print("SQL gerado com sucesso!")
+    print(f"\nSQL gerado com sucesso: {output_sql}")
+
+
+# =========================================================
+# MAIN
+# =========================================================
 
 
 if __name__ == "__main__":
-    disciplinas = extrair_disciplinas_do_pdf(PDF_PATH)
-    gerar_sql(disciplinas, OUTPUT_SQL)
+
+    secoes = extrair_disciplinas_do_pdf(PDF_PATH)
+
+    print(f"\nTotal de seções encontradas: {len(secoes)}\n")
+
+    for s in secoes[:5]:
+
+        print("=" * 60)
+        print(f"DISCIPLINA: {s.codigo_disciplina}")
+        print(f"TURMA: {s.turma}")
+        print(f"NOME: {s.nome_disciplina}")
+
+        for agenda in s.agendas:
+
+            print(
+                f"  DIA {agenda.dia} | "
+                f"{agenda.hora_inicio} -> "
+                f"{agenda.hora_fim}"
+            )
+
+    gerar_sql(secoes, OUTPUT_SQL)
