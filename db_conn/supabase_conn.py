@@ -28,7 +28,32 @@ def get_curriculo(
         .execute()
     )
 
-    print(ano_curriculo)
-    print(response.data)
+
+    return response.data
+
+
+def get_horarios(codigos_disciplinas: list):
+
+    response = (
+        supabase
+        .table("curriculo")
+        .select("""
+            codigo_disciplina,
+            nome_disciplina,
+            fase,
+            tipo,
+            turmas:turmas!inner(
+                id,
+                semestre_id,
+                turmas_agenda!inner(
+                    dia,
+                    hora_inicio,
+                    hora_fim
+                )
+            )
+        """)
+        .in_("codigo_disciplina", codigos_disciplinas)
+        .execute()
+    )
 
     return response.data

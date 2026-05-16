@@ -9,7 +9,8 @@ import streamlit as st
 import pandas as pd
 
 from pdf_parser.historico_pdf_parser import extrair_disciplinas
-from db_conn.supabase_conn import *
+from db_conn.supabase_conn import get_curriculo, get_horarios
+from recsys.rec_sys import filtrar_disciplinas, selecionar_grade
 
 st.set_page_config(
     page_title="Sistema de Recomendação de Grade Curricular",
@@ -196,8 +197,69 @@ if pdf_curriculo:
         )
     
     st.divider()
+
     st.header("Gere sua recomendação de grade curricular")
     botao = st.button("Gerar!", type="primary")
 
     if botao:
+        codigos = df_para_cursar[df_para_cursar["Fase"] != 0]["Código"].tolist()
+        horarios = get_horarios(codigos)
+        #st.write(horarios)
 
+        filtered = filtrar_disciplinas(
+            horarios,
+            options_turnos=options_turnos,
+            horarios_bloqueados=horarios_bloqueados
+        )
+
+        final_grade = selecionar_grade(filtered)
+
+        DIA_MAP_INV = {
+            2: "Seg",
+            3: "Ter",
+            4: "Qua",
+            5: "Qui",
+            6: "Sex",
+        }
+
+        def build_timetable(final_grade):
+            rows = []
+
+            for disc in final_grade:
+                turma = disc["turma_escolhida"]
+
+                for aula in turma["turmas_agenda"]:
+                    rows.append({
+                        "dia": DIA_MAP_INV[aula["dia"]],
+                        "inicio": aula["hora_inicio"][:5],
+                        "fim": aula["hora_fim"][:5],
+                        "disciplina": disc["codigo_disciplina"]
+                    })
+
+            return pd.DataFrame(rows)
+        
+        def render_timetable(df):
+            if df.empty:
+                return pd.DataFrame()
+
+            # pivot-friendly format
+            df["slot"] = df["inicio"] + " - " + df["fim"]
+
+            timetable = df.pivot_table(
+                index="slot",
+                columns="dia",
+                values="disciplina",
+                aggfunc="first"
+            )
+
+            # order columns
+            order = ["Seg", "Ter", "Qua", "Qui", "Sex"]
+            timetable = timetable.reindex(columns=order)
+
+            return timetable
+        
+        df_tt = build_timetable(final_grade)
+        tt_view = render_timetable(df_tt)
+        
+        st.subheader("📅 Sua Grade de Horários")
+        st.dataframe(tt_view, use_container_width=True)
