@@ -2,8 +2,8 @@ import pdfplumber
 import re
 from typing import List, Dict
 
-# Variáveis
-PDF_PATH = "./files/historico2.pdf"
+# Variável para testar local
+PDF_PATH = "INSERIR_PATH_PARA_TESTE_LOCAL.pdf"
 
 
 def extrair_nome(bloco: str) -> str:
@@ -23,6 +23,37 @@ def extrair_nome(bloco: str) -> str:
     nome = re.sub(r"\b(Cursando|Ob|Op|EX|FS)\b.*", "", nome)
 
     return nome.strip()
+
+
+def extrair_carga_horaria(bloco: str) -> int | None:
+    """
+    Extrai a carga horária da disciplina.
+    Exemplo:
+    CIN7140 Pesquisa Bibliográfica 72 ...
+    """
+
+    match = re.search(r"\s(\d{2,3})\s", bloco)
+
+    if match:
+        return int(match.group(1))
+
+    return None
+
+
+def extrair_tipo(bloco: str) -> str | None:
+    """
+    Extrai o tipo da disciplina:
+    Ob = Obrigatória
+    Op = Optativa
+    Ex = Extensão
+    """
+
+    match = re.search(r"\b(Ob|Op|EX)\b", bloco)
+
+    if match:
+        return match.group(1)
+
+    return None
 
 
 def extrair_disciplinas(pdf_upload) -> List[Dict]:
@@ -67,6 +98,8 @@ def extrair_disciplinas(pdf_upload) -> List[Dict]:
                 disciplinas.append({
                     "codigo_disciplina": codigo,
                     "nome_disciplina": extrair_nome(bloco),
+                    "carga_horaria": extrair_carga_horaria(bloco),
+                    "tipo": extrair_tipo(bloco),
                     "nota": None,
                     "status": "CURSANDO"
                 })
@@ -82,6 +115,8 @@ def extrair_disciplinas(pdf_upload) -> List[Dict]:
                     disciplinas.append({
                         "codigo_disciplina": codigo,
                         "nome_disciplina": extrair_nome(bloco),
+                        "carga_horaria": extrair_carga_horaria(bloco),
+                        "tipo": extrair_tipo(bloco),
                         "nota": nota,
                         "status": "APROVADO"
                     })
@@ -91,7 +126,7 @@ def extrair_disciplinas(pdf_upload) -> List[Dict]:
 
 
 if __name__ == "__main__":
-    disciplinas = extrair_disciplinas()
+    disciplinas = extrair_disciplinas(PDF_PATH)
 
     for d in disciplinas:
         print(d)
