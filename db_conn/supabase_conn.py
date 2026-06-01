@@ -3,7 +3,7 @@ import streamlit as st
 from supabase import create_client, Client
 
 
-SUPABASE_URL = 'https://ebiapqslvifugmknaisr.supabase.co'
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["API_KEY"]
 
 
@@ -13,13 +13,11 @@ supabase: Client = create_client(
 )
 
 
-# =========================================================
-# CURRICULO
-# =========================================================
 def get_curriculo(
     ano_curriculo: int
 ):
-
+    """Seleciona todas as colunas da tabela CURRICULO, filtrando pelo ANO CURRICULO e ordernando pela coluna FASE ASC"""
+    
     response = (
         supabase
         .table("curriculo")
@@ -28,8 +26,7 @@ def get_curriculo(
         .order("fase")
         .execute()
     )
-
-
+    
     return response.data
 
 
@@ -43,6 +40,8 @@ def get_horarios(codigos_disciplinas: list):
             nome_disciplina,
             fase,
             tipo,
+            area,
+            carga_horaria,
             turmas:turmas!inner(
                 id,
                 semestre_id,

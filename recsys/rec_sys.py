@@ -1,10 +1,5 @@
 from datetime import datetime
 
-
-# -----------------------------
-# Helpers
-# -----------------------------
-
 DIA_MAP = {
     2: "Segunda",
     3: "Terça",
@@ -12,6 +7,31 @@ DIA_MAP = {
     5: "Quinta",
     6: "Sexta",
 }
+
+TURNOS = {
+    "Todas as manhãs": (7 * 60 + 30, 12 * 60),
+    "Todas as tardes": (13 * 60 + 30, 17 * 60 + 30),
+    "Todas as noites": (18 * 60 + 30, 22 * 60),
+}
+
+AREA_PREFERENCIA = {
+    "Tecnologia da Informação": 1,
+    "Gestão da Informação": 2,
+}
+
+
+def int_ou_zero(valor):
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return 0
+
+
+def eh_obrigatoria(disc):
+    tipo = str(disc.get("tipo", "")).strip().lower()
+    fase = int_ou_zero(disc.get("fase"))
+
+    return fase != 0 or tipo in {"ob", "obrigatoria", "obrigatória"}
 
 
 def parse_time(t: str) -> int:
@@ -29,18 +49,7 @@ def interval_overlap(a_start, a_end, b_start, b_end) -> bool:
     return not (a_end <= b_start or a_start >= b_end)
 
 
-# -----------------------------
-# Turnos restriction
-# -----------------------------
-
-TURNOS = {
-    "Todas as manhãs": (7 * 60 + 30, 12 * 60),
-    "Todas as tardes": (13 * 60 + 30, 17 * 60 + 30),
-    "Todas as noites": (18 * 60 + 30, 22 * 60),
-}
-
-
-def is_blocked_by_turno(turma, options_turnos) -> bool:
+def turno_bloqueado(turma, options_turnos) -> bool:
     if not options_turnos:
         return False
 
@@ -60,11 +69,7 @@ def is_blocked_by_turno(turma, options_turnos) -> bool:
     return False
 
 
-# -----------------------------
-# Horário específico (dia + hora)
-# -----------------------------
-
-def is_blocked_by_schedule(turma, horarios_bloqueados) -> bool:
+def horario_bloqueado(turma, horarios_bloqueados) -> bool:
     if not horarios_bloqueados:
         return False
 
@@ -74,7 +79,7 @@ def is_blocked_by_schedule(turma, horarios_bloqueados) -> bool:
 
             dia_txt = parts[0].strip().lower()
 
-            # CASE 1: ONLY DAY BLOCK
+            # CASO 1: DIA BLOQUEADO
             if len(parts) == 1:
                 for aula in turma.get("turmas_agenda", []):
                     print(aula)
@@ -83,7 +88,7 @@ def is_blocked_by_schedule(turma, horarios_bloqueados) -> bool:
                     if dia == dia_txt:
                         return True
 
-            # CASE 2: DAY + TIME BLOCK
+            # CASO 2: DIA E HORÁRIO BLOQUEADO
             else:
                 horas = parts[1]
                 inicio_str, fim_str = [x.strip() for x in horas.split("-")]
@@ -109,14 +114,10 @@ def is_blocked_by_schedule(turma, horarios_bloqueados) -> bool:
     return False
 
 
-# -----------------------------
-# Main filter
-# -----------------------------
-
 def filtrar_disciplinas(horarios, options_turnos=None, horarios_bloqueados=None):
     """
-    Returns ONLY valid disciplinas + turmas
-    after applying constraints.
+    Retorna apenas disciplinas + turmas válidas
+    após restrições
     """
 
     resultado = []
@@ -127,26 +128,27 @@ def filtrar_disciplinas(horarios, options_turnos=None, horarios_bloqueados=None)
             "nome_disciplina": disciplina["nome_disciplina"],
             "fase": disciplina["fase"],
             "tipo": disciplina["tipo"],
+            "area": disciplina.get("area"),
+            "carga_horaria": disciplina.get("carga_horaria", 0),
             "turmas": []
         }
 
         for turma in disciplina.get("turmas", []):
-            if is_blocked_by_turno(turma, options_turnos):
+            if turno_bloqueado(turma, options_turnos):
                 continue
 
-            if is_blocked_by_schedule(turma, horarios_bloqueados):
+            if horario_bloqueado(turma, horarios_bloqueados):
                 continue
 
             disciplinas_validas["turmas"].append(turma)
 
-        # only keep if at least one valid turma exists
         if disciplinas_validas["turmas"]:
             resultado.append(disciplinas_validas)
 
     return resultado
 
 
-def has_time_conflict(turma1, turma2):
+def possui_conflito_horario(turma1, turma2):
     for a1 in turma1["turmas_agenda"]:
         a1_start = parse_time(a1["hora_inicio"])
         a1_end = parse_time(a1["hora_fim"])
@@ -161,42 +163,81 @@ def has_time_conflict(turma1, turma2):
 
     return False
 
-def selecionar_grade(disciplinas):
+
+def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0):
     """
-    Greedy selection:
-    - lower fase wins
-    - no time conflicts allowed
+    Seleção:
+    - Obrigatórias têm prioridade
+    - Fases obrigatórias mais iniciais têm prioridade
+    - Optativas respeitam a preferência de área
+    - Sem conflito de horários
     """
 
-    # sort by fase (priority)
-    disciplinas = sorted(disciplinas, key=lambda d: d["fase"])
+    area_preferida = AREA_PREFERENCIA.get(tipo_opt)
+
+    def prioridade_disciplina(disc):
+        obrigatoria = eh_obrigatoria(disc)
+        area = int_ou_zero(disc.get("area"))
+        area_match = 0 if area_preferida is None or area == area_preferida else 1
+
+        fase = int_ou_zero(disc.get("fase"))
+
+        return (
+            0 if obrigatoria else 1,
+            fase if obrigatoria else area_match,
+            0 if obrigatoria else fase,
+            disc.get("nome_disciplina", "")
+        )
+
+    disciplinas = sorted(disciplinas, key=prioridade_disciplina)
 
     selecionadas = []
     turmas_escolhidas = []
+    optativas_horas = 0
 
     for disc in disciplinas:
+        obrigatoria = eh_obrigatoria(disc)
+        area = int_ou_zero(disc.get("area"))
+        carga_horaria = int_ou_zero(disc.get("carga_horaria"))
+
+        if not obrigatoria:
+            if area == 0:
+                continue
+
+            if max_optativas_horas <= 0:
+                continue
+
+            if optativas_horas + carga_horaria > max_optativas_horas:
+                continue
+
         melhor_turma = None
 
         for turma in disc["turmas"]:
             conflito = False
 
             for t in turmas_escolhidas:
-                if has_time_conflict(turma, t):
+                if possui_conflito_horario(turma, t):
                     conflito = True
                     break
 
             if not conflito:
                 melhor_turma = turma
-                break  # pick first valid one
+                break  
 
         if melhor_turma:
             selecionadas.append({
                 "codigo_disciplina": disc["codigo_disciplina"],
                 "nome_disciplina": disc["nome_disciplina"],
                 "fase": disc["fase"],
+                "tipo": disc["tipo"],
+                "carga_horaria": carga_horaria,
+                "area": disc.get("area"),
                 "turma_escolhida": melhor_turma
             })
 
             turmas_escolhidas.append(melhor_turma)
+
+            if not obrigatoria:
+                optativas_horas += carga_horaria
 
     return selecionadas
