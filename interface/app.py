@@ -12,7 +12,7 @@ from pdf_parser.historico_pdf_parser import extrair_disciplinas
 from db_conn.supabase_conn import get_curriculo, get_horarios
 from recsys.rec_sys import filtrar_disciplinas, selecionar_grade
 from utils.disciplinas_handler import equivalencias_2016, calcular_optativas
-from utils.timetable_handler import build_timetable, render_timetable
+from utils.timetable_handler import build_timetable, render_timetable, montar_recomendacao
 
 st.set_page_config(
     page_title="Sistema de Recomendação de Grade Curricular",
@@ -74,6 +74,7 @@ if pdf_curriculo:
             "nome_disciplina": d["nome_disciplina"],
             "fase": d["fase"],
             "tipo": d["tipo"],
+            "area": d.get("area", 0),
             "carga_horaria": d["carga_horaria"],
         }
         for d in curriculo
@@ -205,10 +206,12 @@ if pdf_curriculo:
         ["Sim", "Não, apenas disciplinas obrigatórias"],
         )
 
-        if gerar_opt == 'Sim':
+        if gerar_opt == "Sim":
             tipo_opt = st.radio("Preferência por...",
             ["Tecnologia da Informação", "Gestão da Informação", "Indiferente"],
             )
+        else:
+            tipo_opt = "Indiferente"
     
     st.divider()
 
@@ -216,7 +219,7 @@ if pdf_curriculo:
     botao = st.button("Gerar!", type="primary")
 
     if botao:
-        codigos = df_para_cursar[df_para_cursar["Fase"] != 9]["Código"].tolist()
+        codigos, max_optativas_horas = montar_recomendacao(df_para_cursar, gerar_opt)
         horarios = get_horarios(codigos)
 
         filtered = filtrar_disciplinas(
@@ -225,10 +228,23 @@ if pdf_curriculo:
             horarios_bloqueados=horarios_bloqueados
         )
 
-        final_grade = selecionar_grade(filtered)
+        final_grade = selecionar_grade(
+            filtered,
+            tipo_opt=tipo_opt,
+            max_optativas_horas=max_optativas_horas
+        )
         
         df_tt = build_timetable(final_grade)
         tt_view = render_timetable(df_tt)
         
         st.subheader("Sua Grade de Horários")
         st.dataframe(tt_view, use_container_width=True)
+
+        st.subheader("Disciplinas recomendadas")
+        for disc in final_grade:
+            st.markdown(
+                f"{disc['codigo_disciplina']}, "
+                f"{disc['nome_disciplina']}, "
+                f"{disc['tipo']}, "
+                f"{disc['carga_horaria']}"
+            )

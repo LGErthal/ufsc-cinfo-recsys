@@ -40,6 +40,8 @@ def get_horarios(codigos_disciplinas: list):
             nome_disciplina,
             fase,
             tipo,
+            area,
+            carga_horaria,
             turmas:turmas!inner(
                 id,
                 semestre_id,

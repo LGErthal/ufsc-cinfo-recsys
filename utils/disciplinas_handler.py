@@ -97,5 +97,6 @@ def calcular_optativas(
         "nome_disciplina": "OPTATIVAS",
         "fase": 0,
         "tipo": "Op/EX",
+        "area": 0,
         "carga_horaria": horas_restantes,
     }
