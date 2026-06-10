@@ -16,21 +16,25 @@ supabase: Client = create_client(
 def get_curriculo(
     ano_curriculo: int
 ):
-    """Seleciona todas as colunas da tabela CURRICULO, filtrando pelo ANO CURRICULO e ordernando pela coluna FASE ASC"""
+    """
+    Seleciona todas as colunas da tabela CURRICULO, filtrando pelo ANO CURRICULO,
+    ordenando primeiro por TIPO (Ob antes de Op) e depois por FASE.
+    """
     
     response = (
         supabase
         .table("curriculo")
         .select("*")
         .eq("ano_curriculo", ano_curriculo)
-        .order("fase")
+        .order("tipo", desc=False)  # Corrigido: 'desc=False' em vez de 'ascending=True'
+        .order("fase", desc=False)  # Corrigido: 'desc=False' em vez de 'ascending=True'
         .execute()
     )
     
     return response.data
 
 
-def get_horarios(codigos_disciplinas: list):
+def get_horarios(codigos_disciplinas: list, ano_curriculo):
 
     response = (
         supabase
@@ -52,6 +56,7 @@ def get_horarios(codigos_disciplinas: list):
                 )
             )
         """)
+        .eq("ano_curriculo", ano_curriculo)
         .in_("codigo_disciplina", codigos_disciplinas)
         .execute()
     )

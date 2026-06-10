@@ -2,12 +2,18 @@
 
 import pandas as pd
 
-
+##TODO: DISCIPLINAS QUE MUDARAM DE CÓDIGO CIN7410 -> CIN7000
 EQUIVALENCIAS_2016 = {
 
     "CIN7410": {
         "equivale": ["CIN7408", "CIN7307"],
         "conta_optativa": False
+    },
+
+    "CIN700": {
+        "equivale": ["CIN7408", "CIN7307", 'CIN7410'],
+        "conta_optativa": False
+
     },
 
     "CIN7936": {
@@ -19,6 +25,13 @@ EQUIVALENCIAS_2016 = {
     },
 }
 
+EQUIVALENCIAS_2026 = {
+
+    "CIN7410": {
+        "equivale": ["CIN7000"],
+        "conta_optativa": False
+    }
+}
 
 def equivalencias_2016(
     df: pd.DataFrame,
@@ -33,6 +46,32 @@ def equivalencias_2016(
     codigos_remover = set()
 
     for principal, regra in EQUIVALENCIAS_2016.items():
+
+        equivalentes = regra["equivale"]
+
+        if principal in codigos_concluidos:
+            codigos_remover.update(equivalentes)
+
+    df_filtrado = df[
+        ~df["codigo_disciplina"].isin(codigos_remover)
+    ].copy()
+
+    return df_filtrado
+
+
+def equivalencias_2026(
+    df: pd.DataFrame,
+    codigos_concluidos: set
+) -> pd.DataFrame:
+    """
+    Remove disciplinas equivalentes
+    caso o aluno já tenha concluído
+    a disciplina principal.
+    """
+
+    codigos_remover = set()
+
+    for principal, regra in EQUIVALENCIAS_2026.items():
 
         equivalentes = regra["equivale"]
 
@@ -87,7 +126,7 @@ def calcular_optativas(
         horas_restantes = max(0, 576 - total_horas)
 
     elif ano_curriculo == "2026":
-        horas_restantes = max(0, 450 - total_horas)
+        horas_restantes = max(0, 540 - total_horas)
 
     else:
         horas_restantes = 0

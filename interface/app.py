@@ -11,7 +11,7 @@ import pandas as pd
 from pdf_parser.historico_pdf_parser import extrair_disciplinas
 from db_conn.supabase_conn import get_curriculo, get_horarios
 from recsys.rec_sys import filtrar_disciplinas, selecionar_grade
-from utils.disciplinas_handler import equivalencias_2016, calcular_optativas
+from utils.disciplinas_handler import equivalencias_2016, equivalencias_2026, calcular_optativas
 from utils.timetable_handler import build_timetable, render_timetable, montar_recomendacao
 
 st.set_page_config(
@@ -89,6 +89,13 @@ if pdf_curriculo:
             codigos_excluir
     )
         
+
+    if ano_curriculo == '2016':
+        df_cursar = equivalencias_2026(
+            df_cursar,
+            codigos_excluir
+        )
+
     # linha de optativas
     row_optativas = calcular_optativas(
         df_aprovadas,
@@ -220,7 +227,10 @@ if pdf_curriculo:
 
     if botao:
         codigos, max_optativas_horas = montar_recomendacao(df_para_cursar, gerar_opt)
-        horarios = get_horarios(codigos)
+        print('Disciplinas Para Cursar:', codigos)
+        horarios = get_horarios(codigos, ano_curriculo)
+
+        print('\n Horarios:', horarios)
 
         filtered = filtrar_disciplinas(
             horarios,

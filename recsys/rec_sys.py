@@ -1,4 +1,5 @@
 from datetime import datetime
+from functools import partial
 
 DIA_MAP = {
     2: "Segunda",
@@ -117,7 +118,11 @@ def horario_bloqueado(turma, horarios_bloqueados) -> bool:
 def filtrar_disciplinas(horarios, options_turnos=None, horarios_bloqueados=None):
     """
     Retorna apenas disciplinas + turmas válidas
-    após restrições
+    após restrições.
+
+    Regra especial:
+    - CIN7505 (Est. Obrig.) só pode aparecer caso NÃO exista nenhuma
+      disciplina das fases 1, 2, 3 ou 4 disponível.
     """
 
     resultado = []
@@ -145,6 +150,20 @@ def filtrar_disciplinas(horarios, options_turnos=None, horarios_bloqueados=None)
         if disciplinas_validas["turmas"]:
             resultado.append(disciplinas_validas)
 
+    # REGRA ESPECIAL DA CIN7505
+    existe_nucleo_comum = any(
+        d["fase"] in [1, 2, 3, 4]
+        for d in resultado
+        if d["codigo_disciplina"] != "CIN7505"
+    )
+
+    if existe_nucleo_comum:
+        resultado = [
+            d for d in resultado
+            if d["codigo_disciplina"] != "CIN7505"
+        ]
+
+    print(resultado)
     return resultado
 
 
@@ -164,6 +183,21 @@ def possui_conflito_horario(turma1, turma2):
     return False
 
 
+def prioridade_disciplina(disc, area_preferida=None):
+    obrigatoria = eh_obrigatoria(disc)
+    area = int_ou_zero(disc.get("area"))
+    area_match = 0 if area_preferida is None or area == area_preferida else 1
+
+    fase = int_ou_zero(disc.get("fase"))
+
+    return (
+        0 if obrigatoria else 1,
+        fase if obrigatoria else area_match,
+        0 if obrigatoria else fase,
+        disc.get("nome_disciplina", "")
+    )
+
+
 def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0):
     """
     Seleção:
@@ -171,35 +205,34 @@ def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0)
     - Fases obrigatórias mais iniciais têm prioridade
     - Optativas respeitam a preferência de área
     - Sem conflito de horários
+    - Limite máximo geral de 468 horas
     """
+
+    MAX_HORAS_GERAL = 468  # Configuração do limite máximo geral
 
     area_preferida = AREA_PREFERENCIA.get(tipo_opt)
 
-    def prioridade_disciplina(disc):
-        obrigatoria = eh_obrigatoria(disc)
-        area = int_ou_zero(disc.get("area"))
-        area_match = 0 if area_preferida is None or area == area_preferida else 1
-
-        fase = int_ou_zero(disc.get("fase"))
-
-        return (
-            0 if obrigatoria else 1,
-            fase if obrigatoria else area_match,
-            0 if obrigatoria else fase,
-            disc.get("nome_disciplina", "")
-        )
-
-    disciplinas = sorted(disciplinas, key=prioridade_disciplina)
+    disciplinas = sorted(
+        disciplinas,
+        key=partial(prioridade_disciplina, area_preferida=area_preferida)
+    )
 
     selecionadas = []
     turmas_escolhidas = []
     optativas_horas = 0
+    total_horas = 0  # Controla o total de horas da grade selecionada
 
     for disc in disciplinas:
         obrigatoria = eh_obrigatoria(disc)
         area = int_ou_zero(disc.get("area"))
         carga_horaria = int_ou_zero(disc.get("carga_horaria"))
 
+        # 1. VALIDAÇÃO DO LIMITE GERAL (468h)
+        # Se adicionar esta disciplina estourar o limite geral, passamos para a próxima (ou encerramos)
+        if total_horas + carga_horaria > MAX_HORAS_GERAL:
+            continue
+
+        # 2. VALIDAÇÃO DAS OPTATIVAS
         if not obrigatoria:
             if area == 0:
                 continue
@@ -236,7 +269,9 @@ def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0)
             })
 
             turmas_escolhidas.append(melhor_turma)
-
+            
+            # Atualiza os acumuladores de horas
+            total_horas += carga_horaria
             if not obrigatoria:
                 optativas_horas += carga_horaria
 
