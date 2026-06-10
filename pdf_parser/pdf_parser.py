@@ -8,10 +8,10 @@ from typing import List, Optional
 # CONFIG
 # =========================================================
 
-PDF_PATH = "./data/cadastro_turma_arq_20261.pdf"
-OUTPUT_SQL = "grade_arq.sql"
+PDF_PATH = "./data/input/20262_biblio.pdf"
+OUTPUT_SQL = "grade_biblio_20262.sql"
 
-SEMESTRE = "20261"
+SEMESTRE = "20262"
 
 BLOCO_MINUTOS = 50
 
@@ -37,7 +37,7 @@ class Agenda:
 
 
 @dataclass
-class Secao:
+class Turma:
     semestre: str
 
     codigo_disciplina: str
@@ -130,9 +130,9 @@ def extrair_horarios(texto: str) -> List[Agenda]:
 # =========================================================
 
 
-def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
+def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Turma]:
 
-    secoes = []
+    turmas = []
 
     with pdfplumber.open(pdf_path) as pdf:
 
@@ -166,7 +166,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
         # Detecta início disciplina
         if re.match(r"^[A-Z]{3}\d{4}", linha):
 
-            linha_completa = linha
+            linha_completa = line = linha
 
             j = i + 1
 
@@ -210,7 +210,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
             turma = partes[1]
 
             # =================================================
-            # ENCONTRA CARGA HORÁRIA
+            # ENCONTRA CARGA HORÁRIA (Adicionado 0 na lista)
             # =================================================
 
             workload_index = None
@@ -221,7 +221,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
 
                     possible = int(parte)
 
-                    if possible in [18, 36, 72, 74, 108, 126, 432]:
+                    if possible in [0, 18, 36, 72, 74, 108, 126, 432]:
                         workload_index = idx
                         break
 
@@ -243,7 +243,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
 
             agendas = extrair_horarios(linha)
 
-            secao = Secao(
+            turma_obj = Turma(
                 semestre=SEMESTRE,
 
                 codigo_disciplina=codigo_disciplina,
@@ -253,7 +253,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
                 agendas=agendas
             )
 
-            secoes.append(secao)
+            turmas.append(turma_obj)
 
         except Exception as e:
 
@@ -261,7 +261,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
             print(linha)
             print(e)
 
-    return secoes
+    return turmas
 
 
 # =========================================================
@@ -270,7 +270,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Secao]:
 
 
 def gerar_sql(
-    secoes: List[Secao],
+    turmas: List[Turma],
     output_sql: str
 ):
 
@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS semestres (
     semestre VARCHAR(10) UNIQUE NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS secoes (
+CREATE TABLE IF NOT EXISTS turmas (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
     created_at TIMESTAMP DEFAULT NOW(),
@@ -300,11 +300,11 @@ CREATE TABLE IF NOT EXISTS secoes (
     turma VARCHAR(20) NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS secoes_agenda (
+CREATE TABLE IF NOT EXISTS turmas_agenda (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
-    secao_id INTEGER NOT NULL
-        REFERENCES secoes(id),
+    turma_id INTEGER NOT NULL
+        REFERENCES turmas(id),
 
     dia INTEGER NOT NULL,
 
@@ -312,8 +312,8 @@ CREATE TABLE IF NOT EXISTS secoes_agenda (
     hora_fim TIME NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS unique_secao
-ON secoes (
+CREATE UNIQUE INDEX IF NOT EXISTS unique_turma
+ON turmas (
     semestre_id,
     curriculo_disciplina,
     turma
@@ -322,18 +322,18 @@ ON secoes (
 CREATE INDEX IF NOT EXISTS idx_curriculo_codigo
 ON curriculo(codigo_disciplina);
 
-CREATE INDEX IF NOT EXISTS idx_secoes_semestre
-ON secoes(semestre_id);
+CREATE INDEX IF NOT EXISTS idx_turmas_semestre
+ON turmas(semestre_id);
 
-CREATE INDEX IF NOT EXISTS idx_secoes_agenda_secao
-ON secoes_agenda(secao_id);
+CREATE INDEX IF NOT EXISTS idx_turmas_agenda_turma
+ON turmas_agenda(turma_id);
 
-CREATE INDEX IF NOT EXISTS idx_secoes_agenda_dia
-ON secoes_agenda(dia);
+CREATE INDEX IF NOT EXISTS idx_turmas_agenda_dia
+ON turmas_agenda(dia);
 
 ALTER TABLE semestres DISABLE ROW LEVEL SECURITY;
-ALTER TABLE secoes DISABLE ROW LEVEL SECURITY;
-ALTER TABLE secoes_agenda DISABLE ROW LEVEL SECURITY;
+ALTER TABLE turmas DISABLE ROW LEVEL SECURITY;
+ALTER TABLE turmas_agenda DISABLE ROW LEVEL SECURITY;
 """)
 
     # =====================================================
@@ -354,8 +354,8 @@ ON CONFLICT (semestre) DO NOTHING;
 DO $$
 DECLARE
     v_semestre_id INTEGER;
-    v_secao_id INTEGER;
-    v_curriculo_disciplina INTEGER;
+    v_turma_id INTEGER;
+    r_curr RECORD;
 BEGIN
 
 SELECT id
@@ -364,111 +364,66 @@ FROM semestres
 WHERE semestre = '{SEMESTRE}';
 """)
 
-    for secao in secoes:
+    for turma in turmas:
 
         codigo_disciplina = escape_sql(
-            secao.codigo_disciplina
+            turma.codigo_disciplina
         )
 
-        turma = escape_sql(secao.turma)
+        nome_turma = escape_sql(turma.turma)
 
         nome_disciplina = escape_sql(
-            secao.nome_disciplina
+            turma.nome_disciplina
         )
 
+        # Alterado para criar a disciplina padrão (2026) caso não exista nenhuma referência no banco
         sql.append(f"""
+    -- Garantir que a disciplina exista em pelo menos um currículo padrão (2026)
+    IF NOT EXISTS (SELECT 1 FROM curriculo WHERE codigo_disciplina = '{codigo_disciplina}') THEN
+        INSERT INTO curriculo (ano_curriculo, fase, nome_disciplina, carga_horaria, codigo_disciplina, tipo, area)
+        VALUES (2026, 0, '{nome_disciplina}', 0, '{codigo_disciplina}', 'Op', 0);
+    END IF;
 
--- =====================================================
--- BUSCA DISCIPLINA
--- =====================================================
+    -- PERMANENTE: Loop para iterar em TODOS os currículos associados a este código (Ex: 2016 e 2026)
+    FOR r_curr IN (SELECT id FROM curriculo WHERE codigo_disciplina = '{codigo_disciplina}') LOOP
+        
+        v_turma_id := NULL;
 
-SELECT id
-INTO v_curriculo_disciplina
-FROM curriculo
-WHERE codigo_disciplina = '{codigo_disciplina}'
-LIMIT 1;
+        -- Busca se a turma já existe para este currículo específico
+        SELECT id INTO v_turma_id
+        FROM turmas
+        WHERE semestre_id = v_semestre_id
+          AND curriculo_disciplina = r_curr.id
+          AND turma = '{nome_turma}';
 
--- =====================================================
--- CRIA DISCIPLINA SE NÃO EXISTIR
--- =====================================================
+        -- Se a turma não existir para este currículo, insere
+        IF v_turma_id IS NULL THEN
+            INSERT INTO turmas (semestre_id, curriculo_disciplina, turma)
+            VALUES (v_semestre_id, r_curr.id, '{nome_turma}')
+            RETURNING id INTO v_turma_id;
+        END IF;
 
-IF v_curriculo_disciplina IS NULL THEN
-
-    INSERT INTO curriculo (
-        ano_curriculo,
-        fase,
-        nome_disciplina,
-        carga_horaria,
-        codigo_disciplina,
-        tipo,
-        area
-    )
-    VALUES (
-        2026,
-        0,
-        '{nome_disciplina}',
-        0,
-        '{codigo_disciplina}',
-        'Op',
-        0
-    )
-    RETURNING id INTO v_curriculo_disciplina;
-
-END IF;
-
--- =====================================================
--- INSERE SEÇÃO
--- =====================================================
-
-IF NOT EXISTS (
-    SELECT 1
-    FROM secoes s
-    WHERE s.semestre_id = v_semestre_id
-    AND s.curriculo_disciplina = v_curriculo_disciplina
-    AND s.turma = '{turma}'
-) THEN
-
-    INSERT INTO secoes (
-        semestre_id,
-        curriculo_disciplina,
-        turma
-    )
-    VALUES (
-        v_semestre_id,
-        v_curriculo_disciplina,
-        '{turma}'
-    )
-    RETURNING id INTO v_secao_id;
+        -- Insere as agendas correspondentes ligadas à turma deste currículo (Evitando duplicados na agenda)
 """)
 
-        for agenda in secao.agendas:
-
+        for agenda in turma.agendas:
             sql.append(f"""
-    INSERT INTO secoes_agenda (
-        secao_id,
-        dia,
-        hora_inicio,
-        hora_fim
-    )
-    VALUES (
-        v_secao_id,
-        {agenda.dia},
-        '{agenda.hora_inicio}',
-        '{agenda.hora_fim}'
-    );
+        IF NOT EXISTS (
+            SELECT 1 FROM turmas_agenda 
+            WHERE turma_id = v_turma_id AND dia = {agenda.dia} AND hora_inicio = '{agenda.hora_inicio}'
+        ) THEN
+            INSERT INTO turmas_agenda (turma_id, dia, hora_inicio, hora_fim)
+            VALUES (v_turma_id, {agenda.dia}, '{agenda.hora_inicio}', '{agenda.hora_fim}');
+        END IF;
 """)
 
         sql.append("""
-END IF;
+    END LOOP;
 """)
 
     sql.append("""
 END $$;
 """)
-
-    # =====================================================
-    # WRITE FILE
-    # =====================================================
 
     with open(output_sql, "w", encoding="utf-8") as f:
         f.write("\n".join(sql))
@@ -476,18 +431,13 @@ END $$;
     print(f"\nSQL gerado com sucesso: {output_sql}")
 
 
-# =========================================================
-# MAIN
-# =========================================================
-
-
 if __name__ == "__main__":
 
-    secoes = extrair_disciplinas_do_pdf(PDF_PATH)
+    turmas = extrair_disciplinas_do_pdf(PDF_PATH)
 
-    print(f"\nTotal de seções encontradas: {len(secoes)}\n")
+    print(f"\nTotal de seções encontradas: {len(turmas)}\n")
 
-    for s in secoes[:5]:
+    for s in turmas[:90]:
 
         print("=" * 60)
         print(f"DISCIPLINA: {s.codigo_disciplina}")
@@ -502,4 +452,4 @@ if __name__ == "__main__":
                 f"{agenda.hora_fim}"
             )
 
-    gerar_sql(secoes, OUTPUT_SQL)
+    gerar_sql(turmas, OUTPUT_SQL)
