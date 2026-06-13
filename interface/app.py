@@ -54,7 +54,10 @@ if pdf_curriculo:
     df_cursando_raw = pd.DataFrame(cursando)
 
     # APROVADAS
-    df_aprovadas = df_aprovadas_raw[["codigo_disciplina", "nome_disciplina", "nota", "carga_horaria", "tipo" ]]
+    try:
+        df_aprovadas = df_aprovadas_raw[["codigo_disciplina", "nome_disciplina", "nota", "carga_horaria", "tipo" ]]
+    except:
+        df_aprovadas = pd.DataFrame(columns=["codigo_disciplina", "nome_disciplina", "nota", "carga_horaria", "tipo" ])
 
     # CURSANDO
     df_cursando = df_cursando_raw[["codigo_disciplina", "nome_disciplina", "carga_horaria", "tipo"]]
