@@ -26,8 +26,8 @@ def get_curriculo(
         .table("curriculo")
         .select("*")
         .eq("ano_curriculo", ano_curriculo)
-        .order("tipo", desc=False)  # Corrigido: 'desc=False' em vez de 'ascending=True'
-        .order("fase", desc=False)  # Corrigido: 'desc=False' em vez de 'ascending=True'
+        .order("tipo", desc=False) 
+        .order("fase", desc=False)  
         .execute()
     )
     

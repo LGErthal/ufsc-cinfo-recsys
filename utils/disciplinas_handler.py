@@ -2,33 +2,42 @@
 
 import pandas as pd
 
-##TODO: DISCIPLINAS QUE MUDARAM DE CÓDIGO CIN7410 -> CIN7000
 EQUIVALENCIAS_2016 = {
-
     "CIN7410": {
         "equivale": ["CIN7408", "CIN7307"],
         "conta_optativa": False
     },
-
-    "CIN700": {
-        "equivale": ["CIN7408", "CIN7307", 'CIN7410'],
-        "conta_optativa": False
-
-    },
-
     "CIN7936": {
         "equivale": ["CIN7305"],
-        # só conta como optativa
-        # se NÃO estiver sendo usada
-        # como equivalência obrigatória
+        # só conta como optativa se NÃO estiver sendo usada como equivalência obrigatória
         "conta_optativa_condicional": True
     },
+    # Caso as disciplinas estejam com o código novo ao invés do antigo no cadastro de turmas
+    "CIN7111": {
+        "equivale": ["CIN7445"],
+        "conta_optativa_condicional": False
+    },
+    "CIN7112": {
+        "equivale": ["CIN7603"],
+        "conta_optativa_condicional": False
+    },
+    "CIN7000": {
+        "equivale": ["CIN7408", "CIN7307", 'CIN7410'],
+        "conta_optativa": False
+    }
 }
 
 EQUIVALENCIAS_2026 = {
-
     "CIN7410": {
         "equivale": ["CIN7000"],
+        "conta_optativa": False
+    },
+    "CIN7445": {
+        "equivale": ["CIN7111"],
+        "conta_optativa": False
+    },
+    "CIN7603": {
+        "equivale": ["CIN7112"],
         "conta_optativa": False
     }
 }

@@ -4,10 +4,8 @@ from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-# =========================================================
-# CONFIG
-# =========================================================
 
+# CONFIG
 PDF_PATH = "./data/input/20262_biblio.pdf"
 OUTPUT_SQL = "grade_biblio_20262.sql"
 
@@ -15,20 +13,14 @@ SEMESTRE = "20262"
 
 BLOCO_MINUTOS = 50
 
-# =========================================================
-# INTERVALOS
-# =========================================================
 
+# INTERVALOS
 INTERVALOS = [
     ("10:00", "10:10"),
     ("20:10", "20:20"),
 ]
 
-# =========================================================
 # DATACLASSES
-# =========================================================
-
-
 @dataclass
 class Agenda:
     dia: int
@@ -46,12 +38,7 @@ class Turma:
 
     agendas: List[Agenda] = field(default_factory=list)
 
-
-# =========================================================
 # HELPERS
-# =========================================================
-
-
 def escape_sql(value: str) -> str:
 
     if value is None:
@@ -125,11 +112,8 @@ def extrair_horarios(texto: str) -> List[Agenda]:
     return resultado
 
 
-# =========================================================
+
 # PDF PARSER
-# =========================================================
-
-
 def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Turma]:
 
     turmas = []
@@ -149,10 +133,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Turma]:
 
     linhas_processadas = []
 
-    # =====================================================
     # JUNTA LINHAS QUEBRADAS
-    # =====================================================
-
     i = 0
 
     while i < len(linhas):
@@ -196,10 +177,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Turma]:
         else:
             i += 1
 
-    # =====================================================
     # PARSE DISCIPLINAS
-    # =====================================================
-
     for linha in linhas_processadas:
 
         try:
@@ -209,10 +187,7 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Turma]:
             codigo_disciplina = partes[0]
             turma = partes[1]
 
-            # =================================================
             # ENCONTRA CARGA HORÁRIA (Adicionado 0 na lista)
-            # =================================================
-
             workload_index = None
 
             for idx, parte in enumerate(partes):
@@ -229,18 +204,12 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Turma]:
                 print(f"ERRO workload: {linha}")
                 continue
 
-            # =================================================
             # NOME DISCIPLINA
-            # =================================================
-
             nome_disciplina = " ".join(
                 partes[2:workload_index]
             )
 
-            # =================================================
             # HORÁRIOS
-            # =================================================
-
             agendas = extrair_horarios(linha)
 
             turma_obj = Turma(
@@ -264,11 +233,6 @@ def extrair_disciplinas_do_pdf(pdf_path: str) -> List[Turma]:
     return turmas
 
 
-# =========================================================
-# SQL GENERATOR
-# =========================================================
-
-
 def gerar_sql(
     turmas: List[Turma],
     output_sql: str
@@ -276,10 +240,7 @@ def gerar_sql(
 
     sql = []
 
-    # =====================================================
     # TABELAS
-    # =====================================================
-
     sql.append("""
 CREATE TABLE IF NOT EXISTS semestres (
     id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -336,20 +297,15 @@ ALTER TABLE turmas DISABLE ROW LEVEL SECURITY;
 ALTER TABLE turmas_agenda DISABLE ROW LEVEL SECURITY;
 """)
 
-    # =====================================================
-    # SEMESTRE
-    # =====================================================
 
+    # SEMESTRE
     sql.append(f"""
 INSERT INTO semestres (semestre)
 VALUES ('{SEMESTRE}')
 ON CONFLICT (semestre) DO NOTHING;
 """)
 
-    # =====================================================
     # INSERTS
-    # =====================================================
-
     sql.append(f"""
 DO $$
 DECLARE
