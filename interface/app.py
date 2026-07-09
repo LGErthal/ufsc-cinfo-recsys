@@ -254,10 +254,20 @@ if pdf_curriculo:
         st.dataframe(tt_view, use_container_width=True)
 
         st.subheader("Disciplinas recomendadas")
-        for disc in final_grade:
-            st.markdown(
-                f"{disc['codigo_disciplina']}, "
-                f"{disc['nome_disciplina']}, "
-                f"{disc['tipo']}, "
-                f"{disc['carga_horaria']}"
-            )
+        df_recomendadas = pd.DataFrame(final_grade)[[
+            "codigo_disciplina",
+            "nome_disciplina",
+            "fase",
+            "tipo",
+            "turma",
+            "carga_horaria"
+        ]].sort_values(["fase", "codigo_disciplina"])
+
+        st.dataframe(
+            df_recomendadas,
+            hide_index=True,
+            use_container_width=True
+        )
+
+        total_carga_horaria = df_recomendadas["carga_horaria"].sum()
+        st.markdown(f"**Total de carga horária:** {total_carga_horaria} horas")
