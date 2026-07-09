@@ -6,8 +6,8 @@ from typing import List, Optional
 
 
 # CONFIG
-PDF_PATH = "./data/input/20262_biblio.pdf"
-OUTPUT_SQL = "grade_biblio_20262.sql"
+PDF_PATH = "./data/CADASTRO_TURMAS_20262_cinfo.pdf"
+OUTPUT_SQL = "./data/output/grade_cinfo_20262.sql"
 
 SEMESTRE = "20262"
 

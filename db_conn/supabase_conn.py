@@ -49,6 +49,7 @@ def get_horarios(codigos_disciplinas: list, ano_curriculo):
             turmas:turmas!inner(
                 id,
                 semestre_id,
+                turma,
                 turmas_agenda!inner(
                     dia,
                     hora_inicio,

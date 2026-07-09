@@ -265,6 +265,7 @@ def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0)
                 "tipo": disc["tipo"],
                 "carga_horaria": carga_horaria,
                 "area": disc.get("area"),
+                "turma": melhor_turma.get("turma"),
                 "turma_escolhida": melhor_turma
             })
 
