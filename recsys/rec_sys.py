@@ -219,6 +219,7 @@ def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0)
 
     selecionadas = []
     turmas_escolhidas = []
+    choques_horario = {}
     optativas_horas = 0
     total_horas = 0  # Controla o total de horas da grade selecionada
 
@@ -244,14 +245,15 @@ def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0)
                 continue
 
         melhor_turma = None
+        conflitos_disciplina = set()
 
         for turma in disc["turmas"]:
             conflito = False
 
-            for t in turmas_escolhidas:
+            for selecionada, t in turmas_escolhidas:
                 if possui_conflito_horario(turma, t):
                     conflito = True
-                    break
+                    conflitos_disciplina.add(selecionada["nome_disciplina"])
 
             if not conflito:
                 melhor_turma = turma
@@ -269,11 +271,15 @@ def selecionar_grade(disciplinas, tipo_opt="Indiferente", max_optativas_horas=0)
                 "turma_escolhida": melhor_turma
             })
 
-            turmas_escolhidas.append(melhor_turma)
+            turmas_escolhidas.append((selecionadas[-1], melhor_turma))
             
             # Atualiza os acumuladores de horas
             total_horas += carga_horaria
             if not obrigatoria:
                 optativas_horas += carga_horaria
+        else:
+            for nome_disciplina_escolhida in conflitos_disciplina:
+                choques_horario.setdefault(nome_disciplina_escolhida, [])
+                choques_horario[nome_disciplina_escolhida].append(disc["nome_disciplina"])
 
-    return selecionadas
+    return selecionadas, choques_horario
