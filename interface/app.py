@@ -60,7 +60,10 @@ if pdf_curriculo:
         df_aprovadas = pd.DataFrame(columns=["codigo_disciplina", "nome_disciplina", "nota", "carga_horaria", "tipo" ])
 
     # CURSANDO
-    df_cursando = df_cursando_raw[["codigo_disciplina", "nome_disciplina", "carga_horaria", "tipo"]]
+    try:
+        df_cursando = df_cursando_raw[["codigo_disciplina", "nome_disciplina", "carga_horaria", "tipo"]]
+    except:
+        df_cursando = pd.DataFrame(columns=["codigo_disciplina", "nome_disciplina", "carga_horaria", "tipo"])
 
     # união dos códigos APROVADAS + CURSANDO
     codigos_excluir = set(
@@ -118,20 +121,26 @@ if pdf_curriculo:
     with disc_col1:
         st.subheader("APROVADAS")
 
-        st.dataframe(
-            df_aprovadas,
-            hide_index=True,
-            width="stretch"
-        )
+        if df_aprovadas.empty:
+            st.info("Nenhuma disciplina encontrada")
+        else:
+            st.dataframe(
+                df_aprovadas,
+                hide_index=True,
+                width="stretch"
+            )
 
     with disc_col2:
         st.subheader("CURSANDO")
 
-        st.dataframe(
-            df_cursando,
-            hide_index=True,
-            width="stretch"
-        )
+        if df_cursando.empty:
+            st.info("Nenhuma disciplina encontrada")
+        else:
+            st.dataframe(
+                df_cursando,
+                hide_index=True,
+                width="stretch"
+            )
 
     with disc_col3:
         st.subheader("PARA CURSAR")
@@ -139,11 +148,18 @@ if pdf_curriculo:
             df_cursar
         ).sort_values("fase")
 
-        st.dataframe(
-            df_para_cursar[(df_para_cursar["fase"] != 0) | (df_para_cursar["codigo_disciplina"] == "OPT")],
-            hide_index=True,
-            width="stretch"
-        )
+        df_para_cursar_view = df_para_cursar[
+            (df_para_cursar["fase"] != 0) | (df_para_cursar["codigo_disciplina"] == "OPT")
+        ]
+
+        if df_para_cursar_view.empty:
+            st.info("Nenhuma disciplina encontrada")
+        else:
+            st.dataframe(
+                df_para_cursar_view,
+                hide_index=True,
+                width="stretch"
+            )
 
     st.divider()
 
@@ -241,7 +257,7 @@ if pdf_curriculo:
             horarios_bloqueados=horarios_bloqueados
         )
 
-        final_grade = selecionar_grade(
+        final_grade, choques_horario = selecionar_grade(
             filtered,
             tipo_opt=tipo_opt,
             max_optativas_horas=max_optativas_horas
@@ -251,7 +267,7 @@ if pdf_curriculo:
         tt_view = render_timetable(df_tt)
         
         st.subheader("Sua Grade de Horários")
-        st.dataframe(tt_view, width='stretch')
+        st.dataframe(tt_view, use_container_width=True)
 
         st.subheader("Disciplinas recomendadas")
         df_recomendadas = pd.DataFrame(final_grade)[[
@@ -266,8 +282,27 @@ if pdf_curriculo:
         st.dataframe(
             df_recomendadas,
             hide_index=True,
-            width='stretch'
+            use_container_width=True
         )
 
         total_carga_horaria = df_recomendadas["carga_horaria"].sum()
         st.markdown(f"**Total de carga horária:** {total_carga_horaria} horas")
+
+        st.subheader("Choques de horário")
+        df_choques = pd.DataFrame([
+            {
+                "Disciplina Recomendada": disciplina_escolhida,
+                "Outras opções": disciplina_choque
+            }
+            for disciplina_escolhida, disciplinas_choque in choques_horario.items()
+            for disciplina_choque in sorted(set(disciplinas_choque))
+        ])
+
+        if df_choques.empty:
+            st.info("Nenhuma disciplina ficou de fora por choque de horário.")
+        else:
+            st.dataframe(
+                df_choques,
+                hide_index=True,
+                use_container_width=True
+            )
