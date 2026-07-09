@@ -1771,6 +1771,46 @@ WHERE semestre = '20262';
 
 
     -- Garantir que a disciplina exista em pelo menos um currículo padrão (2026)
+    IF NOT EXISTS (SELECT 1 FROM curriculo WHERE codigo_disciplina = 'CIN7903') THEN
+        INSERT INTO curriculo (ano_curriculo, fase, nome_disciplina, carga_horaria, codigo_disciplina, tipo, area)
+        VALUES (2026, 0, 'Inteligência Competitiva', 0, 'CIN7903', 'Op', 0);
+    END IF;
+
+    -- PERMANENTE: Loop para iterar em TODOS os currículos associados a este código (Ex: 2016 e 2026)
+    FOR r_curr IN (SELECT id FROM curriculo WHERE codigo_disciplina = 'CIN7903') LOOP
+        
+        v_turma_id := NULL;
+
+        -- Busca se a turma já existe para este currículo específico
+        SELECT id INTO v_turma_id
+        FROM turmas
+        WHERE semestre_id = v_semestre_id
+          AND curriculo_disciplina = r_curr.id
+          AND turma = '06342';
+
+        -- Se a turma não existir para este currículo, insere
+        IF v_turma_id IS NULL THEN
+            INSERT INTO turmas (semestre_id, curriculo_disciplina, turma)
+            VALUES (v_semestre_id, r_curr.id, '06342')
+            RETURNING id INTO v_turma_id;
+        END IF;
+
+        -- Insere as agendas correspondentes ligadas à turma deste currículo (Evitando duplicados na agenda)
+
+
+        IF NOT EXISTS (
+            SELECT 1 FROM turmas_agenda 
+            WHERE turma_id = v_turma_id AND dia = 3 AND hora_inicio = '18:30:00'
+        ) THEN
+            INSERT INTO turmas_agenda (turma_id, dia, hora_inicio, hora_fim)
+            VALUES (v_turma_id, 3, '18:30:00', '20:10:00');
+        END IF;
+
+
+    END LOOP;
+
+
+    -- Garantir que a disciplina exista em pelo menos um currículo padrão (2026)
     IF NOT EXISTS (SELECT 1 FROM curriculo WHERE codigo_disciplina = 'CIN7904') THEN
         INSERT INTO curriculo (ano_curriculo, fase, nome_disciplina, carga_horaria, codigo_disciplina, tipo, area)
         VALUES (2026, 0, 'Avaliação de Desempenho', 0, 'CIN7904', 'Op', 0);
@@ -2102,10 +2142,10 @@ WHERE semestre = '20262';
 
         IF NOT EXISTS (
             SELECT 1 FROM turmas_agenda 
-            WHERE turma_id = v_turma_id AND dia = 5 AND hora_inicio = '20:20:00'
+            WHERE turma_id = v_turma_id AND dia = 5 AND hora_inicio = '18:30:00'
         ) THEN
             INSERT INTO turmas_agenda (turma_id, dia, hora_inicio, hora_fim)
-            VALUES (v_turma_id, 5, '20:20:00', '22:00:00');
+            VALUES (v_turma_id, 5, '18:30:00', '20:10:00');
         END IF;
 
 
@@ -2342,10 +2382,10 @@ WHERE semestre = '20262';
 
         IF NOT EXISTS (
             SELECT 1 FROM turmas_agenda 
-            WHERE turma_id = v_turma_id AND dia = 5 AND hora_inicio = '18:30:00'
+            WHERE turma_id = v_turma_id AND dia = 5 AND hora_inicio = '20:20:00'
         ) THEN
             INSERT INTO turmas_agenda (turma_id, dia, hora_inicio, hora_fim)
-            VALUES (v_turma_id, 5, '18:30:00', '20:10:00');
+            VALUES (v_turma_id, 5, '20:20:00', '22:00:00');
         END IF;
 
 
