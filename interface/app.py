@@ -251,7 +251,7 @@ if pdf_curriculo:
         tt_view = render_timetable(df_tt)
         
         st.subheader("Sua Grade de Horários")
-        st.dataframe(tt_view, use_container_width=True)
+        st.dataframe(tt_view, width='stretch')
 
         st.subheader("Disciplinas recomendadas")
         df_recomendadas = pd.DataFrame(final_grade)[[
@@ -266,7 +266,7 @@ if pdf_curriculo:
         st.dataframe(
             df_recomendadas,
             hide_index=True,
-            use_container_width=True
+            width='stretch'
         )
 
         total_carga_horaria = df_recomendadas["carga_horaria"].sum()
